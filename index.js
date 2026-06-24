@@ -64,7 +64,7 @@ async function startBot() {
     if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
     phone = phone.replace(/[^0-9]/g, "");
     
-    const customCode = config.customPairingCode || "ANAXA001";
+    const customCode = config.customPairingCode || "PFRANAXA";
     
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
 
