@@ -6,7 +6,6 @@ module.exports = {
   ownerNumbers: ["628xxxxxxxxxx"],
   usePairingCode: true,
   pairingPhoneNumber: "",
-  customPairingCode: "PRFANAXA",
   sessionFolder: "./session",
   databaseFile: "./data/database.json",
   testiChannelJid: "123456789012345678@newsletter",
