@@ -48,14 +48,18 @@ async function startBot() {
   }
 
   // Create the socket connection
-  const sock = makeWASocket({
+const sock = makeWASocket({
     version,
     logger: pino({ level: "silent" }),
     printQRInTerminal: !config.usePairingCode,
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"], // Bypass 405 error
-  });
-
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    // ADD THESE:
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 25000,
+    retryRequestDelayMs: 10000,
+    maxRetries: 5,
+});
   // Request the Official pairing code
   if (config.usePairingCode && !state.creds.registered) {
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
