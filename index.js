@@ -1,13 +1,4 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║                ANAXAGORAS — V1                              ║
-// ║         WhatsApp Bot · Termux-Compatible Build              ║
-// ║         Built with @whiskeysockets/baileys                  ║
-// ╚══════════════════════════════════════════════════════════╝
-
-// ── AUTO-INSTALLER ──────────────────────────────────────────────
 const { execSync } = require("child_process");
-
-// Add any problematic modules here
 const requiredModules = ["cheerio", "jimp", "link-preview-js", "audio-decode"];
 
 for (const mod of requiredModules) {
@@ -15,18 +6,18 @@ for (const mod of requiredModules) {
     require.resolve(mod);
   } catch (e) {
     console.log(`\n📦 Auto-installing missing dependency: ${mod}...`);
-    execSync(`npm install ${mod}`, { stdio: "inherit" });
+    execSync(`npm install ${mod} --legacy-peer-deps`, { stdio: "inherit" });
     console.log(`✅ ${mod} installed successfully!\n`);
   }
 }
-// ────────────────────────────────────────────────────────────────
+
 const {
   default: makeWASocket,
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
   isJidBroadcast,
-} = require("baileys-mod"); 
+} = require("baileys-mod");
 
 const pino = require("pino");
 const fs = require("fs");
@@ -36,7 +27,6 @@ const { handleCommand } = require("./features/commandRouter");
 const { handleGroupJoin, handleGroupLeave } = require("./features/welcomeWatcher");
 const { watchAntilink } = require("./features/antilink");
 
-// ── Ensure required folders/files exist ───────────────────────
 if (!fs.existsSync(config.sessionFolder)) fs.mkdirSync(config.sessionFolder, { recursive: true });
 if (!fs.existsSync("./data")) fs.mkdirSync("./data");
 
@@ -45,38 +35,35 @@ function ask(question) {
   return new Promise((resolve) => rl.question(question, (answer) => { rl.close(); resolve(answer.trim()); }));
 }
 
-// ── Main bot bootstrap ─────────────────────────────────────────
 async function startBot() {
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
+
+  let phone = config.pairingPhoneNumber;
+  if (config.usePairingCode && !state.creds.registered) {
+    if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
+    phone = phone.replace(/[^0-9]/g, "");
+  }
 
   const sock = makeWASocket({
     version,
     logger: pino({ level: "silent" }),
     printQRInTerminal: !config.usePairingCode,
     auth: state,
-    browser: [config.botName, "Chrome", "1.0.0"],
+    browser: ["Ubuntu", "Chrome", "20.0.04"], 
   });
 
-// ── Pairing code login (alternative to QR — handy on Termux) ──
   if (config.usePairingCode && !state.creds.registered) {
-    let phone = config.pairingPhoneNumber;
-    if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
-    phone = phone.replace(/[^0-9]/g, "");
-    
-    const customCode = config.customPairingCode || "PFRANAXA";
-    
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
-
-    // Delay 4 seconds to let the socket connect before requesting the code
     setTimeout(async () => {
       try {
+        const customCode = config.customPairingCode || "ANAXA001";
         const code = await sock.requestPairingCode(phone, customCode);
         console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
       } catch (err) {
         console.error("\n❌ Gagal request pairing code:", err.message);
       }
-    }, 4000); 
+    }, 3000);
   }
 
   sock.ev.on("creds.update", saveCreds);
@@ -99,7 +86,6 @@ async function startBot() {
     }
   });
 
-  // ── Incoming messages ──────────────────────────────────────────
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
 
@@ -109,15 +95,14 @@ async function startBot() {
       if (isJidBroadcast(msg.key.remoteJid)) continue;
 
       try {
-        await watchAntilink(sock, msg);   // passive watcher, runs on every message
-        await handleCommand(sock, msg);   // prefix-based command dispatch
+        await watchAntilink(sock, msg);
+        await handleCommand(sock, msg);
       } catch (err) {
         console.error("❌ Message handling error:", err.message);
       }
     }
   });
 
-  // ── Group participant updates (welcome/left) ────────────────────
   sock.ev.on("group-participants.update", async (update) => {
     try {
       if (update.action === "add") await handleGroupJoin(sock, update);
@@ -130,7 +115,6 @@ async function startBot() {
   return sock;
 }
 
-// ── Boot ────────────────────────────────────────────────────────
 startBot().catch((err) => {
   console.error("💥 Fatal error:", err);
   process.exit(1);
