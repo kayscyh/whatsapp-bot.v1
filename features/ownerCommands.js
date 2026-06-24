@@ -1,13 +1,8 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║        ANAXAGORAS — V1  ·  Owner Menu Commands             ║
-// ╚══════════════════════════════════════════════════════════╝
-
 const fs = require("fs");
 const path = require("path");
 const config = require("../config/config");
 const db = require("../config/database");
 
-// ── ping ──────────────────────────────────────────────────────
 async function cmdPing(sock, msg) {
   const jid = msg.key.remoteJid;
   const start = Date.now();
@@ -16,7 +11,6 @@ async function cmdPing(sock, msg) {
   await sock.sendMessage(jid, { text: `🏓 Pong! ${latency}ms` }, { quoted: sent });
 }
 
-// ── backup ────────────────────────────────────────────────────
 async function cmdBackup(sock, msg) {
   const jid = msg.key.remoteJid;
   const dbPath = path.join(__dirname, "..", config.databaseFile.replace(/^\.\//, ""));
@@ -30,7 +24,6 @@ async function cmdBackup(sock, msg) {
   });
 }
 
-// ── joingc <link> ─────────────────────────────────────────────
 async function cmdJoinGc(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const link = args[0];
@@ -47,8 +40,6 @@ async function cmdJoinGc(sock, msg, args) {
   }
 }
 
-// ── addsewa [hari] ────────────────────────────────────────────
-// Run inside the target group, or pass a group jid as arg from DM.
 async function cmdAddSewa(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const isGroupCtx = jid.endsWith("@g.us");
@@ -73,7 +64,6 @@ async function cmdAddSewa(sock, msg, args) {
   });
 }
 
-// ── listsewa ──────────────────────────────────────────────────
 async function cmdListSewa(sock, msg) {
   const jid = msg.key.remoteJid;
   const sewaData = db.listSewa();
@@ -89,7 +79,6 @@ async function cmdListSewa(sock, msg) {
   await sock.sendMessage(jid, { text: text.trim() });
 }
 
-// ── delsewa [groupJid] ────────────────────────────────────────
 async function cmdDelSewa(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const targetJid = jid.endsWith("@g.us") ? jid : args[0];
@@ -99,8 +88,6 @@ async function cmdDelSewa(sock, msg, args) {
   await sock.sendMessage(jid, { text: `🗑️ Sewa untuk grup ${targetJid} berhasil dihapus.` });
 }
 
-// ── leftnosewa ────────────────────────────────────────────────
-// Bot leaves all groups that are not actively rented.
 async function cmdLeftNoSewa(sock, msg) {
   const jid = msg.key.remoteJid;
   try {
@@ -120,7 +107,6 @@ async function cmdLeftNoSewa(sock, msg) {
   }
 }
 
-// ── upsw (reply to image/video) [caption] ───────────────────────
 async function cmdUploadStatus(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -148,8 +134,6 @@ async function cmdUploadStatus(sock, msg, args) {
   }
 }
 
-// ── upswgc (reply to image/video) [caption] ─────────────────────
-// Same as upsw, but also forwards the media into the current group/chat.
 async function cmdUploadStatusToGroup(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -177,7 +161,6 @@ async function cmdUploadStatusToGroup(sock, msg, args) {
   }
 }
 
-// ── delsw ─────────────────────────────────────────────────────
 async function cmdDeleteStatus(sock, msg) {
   const jid = msg.key.remoteJid;
   const key = db.getLastStatusKey();
@@ -192,21 +175,42 @@ async function cmdDeleteStatus(sock, msg) {
   }
 }
 
-// ── uptesti (reply to a message) ────────────────────────────────
-async function cmdUploadTestimonial(sock, msg) {
+async function cmdUploadTestimonial(sock, msg, args) {
   const jid = msg.key.remoteJid;
-  const ctx = msg.message?.extendedTextMessage?.contextInfo;
-  const quoted = ctx?.quotedMessage;
-  if (!quoted) return sock.sendMessage(jid, { text: "❌ Reply pesan testimoni (teks/gambar) dengan caption .uptesti" });
+  const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+  
+  if (!quoted || (!quoted.imageMessage && !quoted.videoMessage)) {
+    return sock.sendMessage(jid, { text: "❌ Reply gambar/video testimoni dengan caption .uptesti" });
+  }
 
-  const text = quoted.conversation || quoted.extendedTextMessage?.text || quoted.imageMessage?.caption || "(media)";
-  const from = ctx.participant || "unknown";
+  if (!config.testiChannelJid) {
+    return sock.sendMessage(jid, { text: "❌ Channel testi belum di-set di config.js!" });
+  }
 
-  db.addTestimonial({ from, text, date: new Date().toISOString() });
-  await sock.sendMessage(jid, { text: "✅ Testimoni berhasil disimpan." });
+  const { downloadMediaMessage } = require("@whiskeysockets/baileys");
+  const ctx = msg.message.extendedTextMessage.contextInfo;
+  const fakeMsg = { key: { remoteJid: jid, id: ctx.stanzaId, participant: ctx.participant }, message: quoted };
+
+  try {
+    const buffer = await downloadMediaMessage(fakeMsg, "buffer", {});
+    const isVideo = !!quoted.videoMessage;
+    
+    let caption = args.join(" ");
+    if (!caption) {
+      caption = isVideo ? (quoted.videoMessage.caption || "") : (quoted.imageMessage.caption || "");
+    }
+
+    await sock.sendMessage(config.testiChannelJid, isVideo 
+      ? { video: buffer, caption } 
+      : { image: buffer, caption }
+    );
+    
+    await sock.sendMessage(jid, { text: "✅ Testimoni berhasil dikirim ke channel." });
+  } catch (err) {
+    await sock.sendMessage(jid, { text: `❌ Gagal kirim testimoni: ${err.message}` });
+  }
 }
 
-// ── creategrup <judul>|<no1>,<no2>,... ──────────────────────────
 async function cmdCreateGroup(sock, msg, args) {
   const jid = msg.key.remoteJid;
   const parts = args.join(" ").split("|").map((p) => p.trim());
@@ -224,7 +228,6 @@ async function cmdCreateGroup(sock, msg, args) {
   }
 }
 
-// ── setppbot (reply to image) ────────────────────────────────────
 async function cmdSetBotPicture(sock, msg) {
   const jid = msg.key.remoteJid;
   const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -243,18 +246,14 @@ async function cmdSetBotPicture(sock, msg) {
   }
 }
 
-// ── setbot <nama_baru> ────────────────────────────────────────────
-async function cmdSetBotName(sock, msg, args) {
+async function cmdSetBotResponse(sock, msg, args) {
   const jid = msg.key.remoteJid;
-  const name = args.join(" ").trim();
-  if (!name) return sock.sendMessage(jid, { text: "❌ Format: .setbot <nama_baru>" });
+  const text = args.join(" ").trim();
+  
+  if (!text) return sock.sendMessage(jid, { text: "❌ Format: .setbot <pesan_balasan_baru>" });
 
-  try {
-    await sock.updateProfileName(name);
-    await sock.sendMessage(jid, { text: `✅ Nama bot berhasil diubah menjadi *${name}*.` });
-  } catch (err) {
-    await sock.sendMessage(jid, { text: `❌ Gagal ubah nama bot: ${err.message}` });
-  }
+  db.setBotResponse(text);
+  await sock.sendMessage(jid, { text: `✅ Balasan bot berhasil diubah menjadi:\n\n"${text}"` });
 }
 
 module.exports = {
@@ -271,5 +270,5 @@ module.exports = {
   cmdUploadTestimonial,
   cmdCreateGroup,
   cmdSetBotPicture,
-  cmdSetBotName,
+  cmdSetBotResponse,
 };
