@@ -1,8 +1,3 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║         ANAXAGORAS — V1  ·  Database Helper                ║
-// ╚══════════════════════════════════════════════════════════╝
-// Plain JSON file storage — no native modules, Termux-safe.
-
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
@@ -10,18 +5,19 @@ const config = require("./config");
 const DB_PATH = path.join(__dirname, "..", config.databaseFile.replace(/^\.\//, ""));
 
 const DEFAULT_DB = {
-  groups: {},        // per-group settings (welcome, antilink, lists, store, etc.)
-  sewa: {},           // rental/subscription registry { [groupJid]: { activatedAt, expiresAt } }
-  testimonials: [],   // uptesti entries
-  status: {           // tracks last status@broadcast message for delsw
+  groups: {},
+  sewa: {},
+  testimonials: [],
+  status: {
     lastKey: null,
   },
+  botResponse: "Ya, dalem? Ada yang bisa bot bantu?",
 };
 
 const DEFAULT_GROUP = {
   welcomeEnabled: false,
   leftEnabled: false,
-  welcomeMessage: null,   // null = use config.defaults.welcomeMessage
+  welcomeMessage: null,
   leftMessage: null,
   antilink: false,
   antilinkKick: false,
@@ -31,8 +27,8 @@ const DEFAULT_GROUP = {
   closeMessage: null,
   statusProses: null,
   statusDone: null,
-  symbol: null,           // null = use config.storeSymbol
-  lists: {},              // { listName: { items: [{name, price}] } }
+  symbol: null,
+  lists: {},
 };
 
 function ensureDbFile() {
@@ -58,7 +54,6 @@ function writeDB(db) {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
 }
 
-// ── Group helpers ─────────────────────────────────────────────
 function getGroup(jid) {
   const db = readDB();
   if (!db.groups[jid]) {
@@ -76,7 +71,6 @@ function setGroup(jid, partialData) {
   return db.groups[jid];
 }
 
-// ── Sewa helpers ──────────────────────────────────────────────
 function getSewa(jid) {
   const db = readDB();
   return db.sewa[jid] || null;
@@ -105,7 +99,6 @@ function isSewaActive(jid) {
   return new Date(entry.expiresAt).getTime() > Date.now();
 }
 
-// ── Testimonial helpers ───────────────────────────────────────
 function addTestimonial(entry) {
   const db = readDB();
   db.testimonials.push(entry);
@@ -116,7 +109,6 @@ function getTestimonials() {
   return readDB().testimonials;
 }
 
-// ── Status (story) helpers ────────────────────────────────────
 function setLastStatusKey(key) {
   const db = readDB();
   db.status.lastKey = key;
@@ -125,6 +117,16 @@ function setLastStatusKey(key) {
 
 function getLastStatusKey() {
   return readDB().status.lastKey;
+}
+
+function setBotResponse(text) {
+  const db = readDB();
+  db.botResponse = text;
+  writeDB(db);
+}
+
+function getBotResponse() {
+  return readDB().botResponse || "Ya, dalem? Ada yang bisa bot bantu?";
 }
 
 module.exports = {
@@ -141,4 +143,6 @@ module.exports = {
   getTestimonials,
   setLastStatusKey,
   getLastStatusKey,
+  setBotResponse,
+  getBotResponse,
 };
