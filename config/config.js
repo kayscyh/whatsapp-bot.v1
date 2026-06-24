@@ -13,7 +13,8 @@ module.exports = {
   testiChannelJid: "123456789012345678@newsletter",
   allMenuPicture: "./assets/allmenu.jpg",
   storeSymbol: "⪩ˋ",
-  defaultSewaDays: 30,
+  defaultSewaDays: 0,
+
   defaults: {
     welcomeMessage: "「 𝗦𝗖𝗢𝗩𝗗𝗤 」\nSelamat datang @user di grup ini! 👋",
     leftMessage: "「 𝗦𝗖𝗢𝗦𝗦 」\n@user telah meninggalkan grup. 👋",
