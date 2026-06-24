@@ -10,7 +10,7 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   isJidBroadcast,
-} = require("@whiskeysockets/baileys");
+} = require("baileys-pro"); 
 
 const pino = require("pino");
 const fs = require("fs");
