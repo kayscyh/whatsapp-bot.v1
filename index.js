@@ -10,7 +10,7 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   isJidBroadcast,
-} = require("baileys-pro"); 
+} = require("baileys-mod"); 
 
 const pino = require("pino");
 const fs = require("fs");
