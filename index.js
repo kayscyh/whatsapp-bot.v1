@@ -4,6 +4,22 @@
 // ║         Built with @whiskeysockets/baileys                  ║
 // ╚══════════════════════════════════════════════════════════╝
 
+// ── AUTO-INSTALLER ──────────────────────────────────────────────
+const { execSync } = require("child_process");
+
+// Add any problematic modules here
+const requiredModules = ["cheerio", "jimp", "link-preview-js", "audio-decode"];
+
+for (const mod of requiredModules) {
+  try {
+    require.resolve(mod);
+  } catch (e) {
+    console.log(`\n📦 Auto-installing missing dependency: ${mod}...`);
+    execSync(`npm install ${mod}`, { stdio: "inherit" });
+    console.log(`✅ ${mod} installed successfully!\n`);
+  }
+}
+// ────────────────────────────────────────────────────────────────
 const {
   default: makeWASocket,
   useMultiFileAuthState,
