@@ -50,15 +50,14 @@ async function startBot() {
     logger: pino({ level: "silent" }),
     printQRInTerminal: !config.usePairingCode,
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"], 
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
   });
 
   if (config.usePairingCode && !state.creds.registered) {
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
     setTimeout(async () => {
       try {
-        const customCode = config.customPairingCode || "ANAXA001";
-        const code = await sock.requestPairingCode(phone, customCode);
+        const code = await sock.requestPairingCode(phone, config.customPairingCode);
         console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
       } catch (err) {
         console.error("\n❌ Gagal request pairing code:", err.message);
