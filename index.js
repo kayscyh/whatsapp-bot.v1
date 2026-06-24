@@ -42,12 +42,16 @@ async function startBot() {
     browser: [config.botName, "Chrome", "1.0.0"],
   });
 
-  // ── Pairing code login (alternative to QR — handy on Termux) ──
+// ── Pairing code login (alternative to QR — handy on Termux) ──
   if (config.usePairingCode && !state.creds.registered) {
     let phone = config.pairingPhoneNumber;
     if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
     phone = phone.replace(/[^0-9]/g, "");
-    const code = await sock.requestPairingCode(phone);
+    
+    // Pass the custom code as the second argument
+    const customCode = config.customPairingCode || "PRFANAXA"; // Fallback if missing
+    const code = await sock.requestPairingCode(phone, customCode); // custom your pairing code
+    
     console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
   }
 
