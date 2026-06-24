@@ -64,11 +64,19 @@ async function startBot() {
     if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
     phone = phone.replace(/[^0-9]/g, "");
     
-    // Pass the custom code as the second argument
-    const customCode = config.customPairingCode || "PRFANAXA"; // Fallback if missing
-    const code = await sock.requestPairingCode(phone, customCode); // custom your pairing code
+    const customCode = config.customPairingCode || "ANAXA001";
     
-    console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
+    console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
+
+    // Delay 4 seconds to let the socket connect before requesting the code
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phone, customCode);
+        console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
+      } catch (err) {
+        console.error("\n❌ Gagal request pairing code:", err.message);
+      }
+    }, 4000); 
   }
 
   sock.ev.on("creds.update", saveCreds);
