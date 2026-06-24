@@ -36,9 +36,13 @@ function ask(question) {
 }
 
 async function startBot() {
-  // MUST HAVE: Fetch version and load the session state
-  const { version } = await fetchLatestBaileysVersion();
+async function startBot() {
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Using WhatsApp version: ${version.join('.')}`);
+  console.log(`Is latest: ${isLatest}`);
+  
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
+
 
   // MUST HAVE: Ask for phone number
   let phone = config.pairingPhoneNumber;
