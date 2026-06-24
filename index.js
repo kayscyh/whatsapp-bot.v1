@@ -36,28 +36,33 @@ function ask(question) {
 }
 
 async function startBot() {
+  // MUST HAVE: Fetch version and load the session state
   const { version } = await fetchLatestBaileysVersion();
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
 
+  // MUST HAVE: Ask for phone number
   let phone = config.pairingPhoneNumber;
   if (config.usePairingCode && !state.creds.registered) {
     if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
     phone = phone.replace(/[^0-9]/g, "");
   }
 
+  // Create the socket connection
   const sock = makeWASocket({
     version,
     logger: pino({ level: "silent" }),
     printQRInTerminal: !config.usePairingCode,
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    browser: ["Ubuntu", "Chrome", "20.0.04"], // Bypass 405 error
   });
 
+  // Request the Official pairing code
   if (config.usePairingCode && !state.creds.registered) {
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
     setTimeout(async () => {
       try {
-        const code = await sock.requestPairingCode(phone, config.customPairingCode);
+        // ONLY pass phone. WhatsApp generates the code securely.
+        const code = await sock.requestPairingCode(phone);
         console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
       } catch (err) {
         console.error("\n❌ Gagal request pairing code:", err.message);
