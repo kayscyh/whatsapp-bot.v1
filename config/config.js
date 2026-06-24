@@ -7,6 +7,7 @@ module.exports = {
   
   usePairingCode: true,
   pairingPhoneNumber: "",
+  customPairingCode: "DAPPAA01",
   
   sessionFolder: "./session",
   databaseFile: "./data/database.json",
