@@ -1,8 +1,5 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║        ANAXAGORAS — V1  ·  Command Router                  ║
-// ╚══════════════════════════════════════════════════════════╝
-
 const config = require("../config/config");
+const db = require("../config/database");
 const { isGroup, isOwner, isGroupAdmin } = require("./permissions");
 const { isSewaActive } = require("../config/database");
 
@@ -12,7 +9,6 @@ const admin = require("./adminCommands");
 const store = require("./storeCommands");
 const { cmdAntilink, cmdAntilinkKick } = require("./antilink");
 
-// ── Command classification ───────────────────────────────────
 const OWNER_ONLY = new Set([
   "ping", "backup", "joingc", "addsewa", "listsewa", "delsewa",
   "leftnosewa", "upswgc", "upsw", "delsw", "uptesti", "creategrup",
@@ -28,7 +24,6 @@ const ADMIN_ONLY = new Set([
   "proses", "done", "setlist", "resetlist", "setsymbol",
 ]);
 
-// ── Extract message text ─────────────────────────────────────
 function getMsgText(msg) {
   return (
     msg.message?.conversation ||
@@ -39,9 +34,14 @@ function getMsgText(msg) {
   ).trim();
 }
 
-// ── Main router ───────────────────────────────────────────────
 async function handleCommand(sock, msg) {
   const text = getMsgText(msg);
+
+  if (text.toLowerCase() === "bot") {
+    const replyText = db.getBotResponse();
+    return sock.sendMessage(msg.key.remoteJid, { text: replyText }, { quoted: msg });
+  }
+
   const prefix = config.prefix;
   if (!text.startsWith(prefix)) return;
 
@@ -53,7 +53,6 @@ async function handleCommand(sock, msg) {
 
   const senderIsOwner = isOwner(sender);
 
-  // ── Permission gating ───────────────────────────────────────
   if (OWNER_ONLY.has(cmd) && !senderIsOwner) {
     return sock.sendMessage(jid, { text: "❌ Khusus owner bot." });
   }
@@ -74,11 +73,7 @@ async function handleCommand(sock, msg) {
   }
 
   switch (cmd) {
-    // ── Menu ───────────────────────────────────────────
-    case "allmenu":
-      return handleAllMenu(sock, msg);
-
-    // ── Owner ──────────────────────────────────────────
+    case "allmenu": return handleAllMenu(sock, msg);
     case "ping": return owner.cmdPing(sock, msg);
     case "backup": return owner.cmdBackup(sock, msg);
     case "joingc": return owner.cmdJoinGc(sock, msg, args);
@@ -89,12 +84,10 @@ async function handleCommand(sock, msg) {
     case "upswgc": return owner.cmdUploadStatusToGroup(sock, msg, args);
     case "upsw": return owner.cmdUploadStatus(sock, msg, args);
     case "delsw": return owner.cmdDeleteStatus(sock, msg);
-    case "uptesti": return owner.cmdUploadTestimonial(sock, msg);
+    case "uptesti": return owner.cmdUploadTestimonial(sock, msg, args);
     case "creategrup": return owner.cmdCreateGroup(sock, msg, args);
     case "setppbot": return owner.cmdSetBotPicture(sock, msg);
-    case "setbot": return owner.cmdSetBotName(sock, msg, args);
-
-    // ── Admin: group management ─────────────────────────
+    case "setbot": return owner.cmdSetBotResponse(sock, msg, args);
     case "add": return admin.cmdAdd(sock, msg, args);
     case "addadmin": return admin.cmdAddAdmin(sock, msg, args);
     case "del": return admin.cmdDel(sock, msg);
@@ -107,26 +100,18 @@ async function handleCommand(sock, msg) {
     case "linkgc": return admin.cmdLinkGc(sock, msg);
     case "resetlinkgc": return admin.cmdResetLinkGc(sock, msg);
     case "setppgc": return admin.cmdSetGroupPicture(sock, msg);
-
-    // ── Admin: antilink ──────────────────────────────────
     case "antilink": return cmdAntilink(sock, msg, args);
     case "antilinkkick": return cmdAntilinkKick(sock, msg, args);
-
-    // ── Admin: welcome / left ────────────────────────────
     case "setwelcome": return admin.cmdSetWelcome(sock, msg, args);
     case "setleft": return admin.cmdSetLeft(sock, msg, args);
     case "welcome": return admin.cmdWelcomeToggle(sock, msg, args);
     case "left": return admin.cmdLeftToggle(sock, msg, args);
     case "teswelcome": return admin.cmdTesWelcome(sock, msg);
     case "tesleft": return admin.cmdTesLeft(sock, msg);
-
-    // ── Admin: open/close & proses/done message setters ──
     case "setopen": return admin.cmdSetOpen(sock, msg, args);
     case "setclose": return admin.cmdSetClose(sock, msg, args);
     case "setproses": return admin.cmdSetProses(sock, msg, args);
     case "setdone": return admin.cmdSetDone(sock, msg, args);
-
-    // ── Store ──────────────────────────────────────────────
     case "addlist": return store.cmdAddList(sock, msg, args);
     case "dellist": return store.cmdDelList(sock, msg, args);
     case "updatelist": return store.cmdUpdateList(sock, msg, args);
@@ -138,9 +123,7 @@ async function handleCommand(sock, msg) {
     case "close": return store.cmdClose(sock, msg);
     case "proses": return store.cmdProses(sock, msg, args);
     case "done": return store.cmdDone(sock, msg, args);
-
-    default:
-      break; // unknown command — silently ignore
+    default: break;
   }
 }
 
