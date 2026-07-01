@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const config = require("../config/config");
 const db = require("../config/database");
+const archiver = require('archiver');
 
 async function cmdPing(sock, msg) {
   const jid = msg.key.remoteJid;
@@ -12,17 +13,51 @@ async function cmdPing(sock, msg) {
 }
 
 async function cmdBackup(sock, msg) {
-  const jid = msg.key.remoteJid;
-  const dbPath = path.join(__dirname, "..", config.databaseFile.replace(/^\.\//, ""));
-  if (!fs.existsSync(dbPath)) return sock.sendMessage(jid, { text: "❌ Database tidak ditemukan." });
+    const jid = msg.key.remoteJid;
+    
+    // Send a message so you know it started
+    await sock.sendMessage(jid, { text: "⏳ Sedang mengompres file sistem, mohon tunggu..." }, { quoted: msg });
 
-  await sock.sendMessage(jid, {
-    document: fs.readFileSync(dbPath),
-    fileName: `anaxa-backup-${Date.now()}.json`,
-    mimetype: "application/json",
-    caption: "📦 Backup database berhasil dibuat.",
-  });
+    const output = fs.createWriteStream('./backup.zip');
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', async () => {
+        await sock.sendMessage(jid, { 
+            document: { url: './backup.zip' }, 
+            fileName: `anaxa-full-backup-${Date.now()}.zip`,
+            mimetype: "application/zip",
+            caption: "✅ Backup sistem lengkap berhasil dibuat." 
+        }, { quoted: msg });
+        
+        // Clean up
+        if (fs.existsSync('./backup.zip')) fs.unlinkSync('./backup.zip');
+    });
+
+    archive.pipe(output);
+
+    // 1. Directories to include
+    archive.directory('./features/', 'features');
+    archive.directory('./plugins/', 'plugins');
+    archive.directory('./config/', 'config');
+    
+    // 2. Individual files to include
+    archive.file('./index.js', { name: 'index.js' });
+    archive.file('./package.json', { name: 'package.json' });
+    
+    // 3. Include your database/json files
+    // This uses your original config logic to find the database path
+    const dbPath = path.join(__dirname, "..", config.databaseFile.replace(/^\.\//, ''));
+    if (fs.existsSync(dbPath)) {
+        archive.file(dbPath, { name: path.basename(dbPath) });
+    }
+    
+    // Include list files if they exist
+    if (fs.existsSync('./list-messages.json')) archive.file('./list-messages.json', { name: 'list-messages.json' });
+    if (fs.existsSync('./list-settings.json')) archive.file('./list-settings.json', { name: 'list-settings.json' });
+
+    archive.finalize();
 }
+
 
 async function cmdJoinGc(sock, msg, args) {
   const jid = msg.key.remoteJid;

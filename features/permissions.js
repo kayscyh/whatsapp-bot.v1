@@ -10,8 +10,9 @@ function isGroup(jid) {
 }
 
 function isOwner(senderJid) {
-  const number = senderJid.split("@")[0].split(":")[0];
-  return config.ownerNumbers.includes(number);
+  if (!senderJid) return false;
+  const phoneNumber = senderJid.split("@")[0].replace(/[^0-9]/g, "");
+  return config.ownerNumbers.includes(phoneNumber);
 }
 
 async function isGroupAdmin(sock, groupJid, senderJid) {

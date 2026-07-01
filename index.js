@@ -1,77 +1,43 @@
-const { execSync } = require("child_process");
-const requiredModules = ["cheerio", "jimp", "link-preview-js", "audio-decode"];
-
-for (const mod of requiredModules) {
-  try {
-    require.resolve(mod);
-  } catch (e) {
-    console.log(`\n📦 Auto-installing missing dependency: ${mod}...`);
-    execSync(`npm install ${mod} --legacy-peer-deps`, { stdio: "inherit" });
-    console.log(`✅ ${mod} installed successfully!\n`);
-  }
-}
-
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  isJidBroadcast,
-} = require("@whiskeysockets/baileys");
-
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require("@whiskeysockets/baileys");
 const pino = require("pino");
 const fs = require("fs");
 const readline = require("readline");
 const config = require("./config/config");
 const { handleCommand } = require("./features/commandRouter");
-const { handleGroupJoin, handleGroupLeave } = require("./features/welcomeWatcher");
-const { watchAntilink } = require("./features/antilink");
 
-if (!fs.existsSync(config.sessionFolder)) fs.mkdirSync(config.sessionFolder, { recursive: true });
-if (!fs.existsSync("./data")) fs.mkdirSync("./data");
-
+// Helper to ask for phone number in terminal
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((resolve) => rl.question(question, (answer) => { rl.close(); resolve(answer.trim()); }));
 }
 
 async function startBot() {
-async function startBot() {
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  console.log(`Using WhatsApp version: ${version.join('.')}`);
-  console.log(`Is latest: ${isLatest}`);
-  
   const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder);
+  const { version } = await fetchLatestBaileysVersion();
 
-
-  // MUST HAVE: Ask for phone number
+  // Ask for phone number if not registered
   let phone = config.pairingPhoneNumber;
   if (config.usePairingCode && !state.creds.registered) {
     if (!phone) phone = await ask("📱 Masukkan nomor WhatsApp bot (contoh 6281234567890): ");
     phone = phone.replace(/[^0-9]/g, "");
   }
 
-  // Create the socket connection
-const sock = makeWASocket({
+  const sock = makeWASocket({
     version,
     logger: pino({ level: "silent" }),
     printQRInTerminal: !config.usePairingCode,
     auth: state,
-    browser: ["Ubuntu", "Chrome", "20.0.04"],
-    // ADD THESE:
-    connectTimeoutMs: 60000,
-    keepAliveIntervalMs: 25000,
-    retryRequestDelayMs: 10000,
-    maxRetries: 5,
-});
-  // Request the Official pairing code
+    browser: Browsers.ubuntu("Chrome"),
+  });
+
+  // Request the pairing code
   if (config.usePairingCode && !state.creds.registered) {
     console.log("⏳ Menghubungkan ke server WhatsApp untuk mengambil kode...");
     setTimeout(async () => {
       try {
-        // ONLY pass phone. WhatsApp generates the code securely.
         const code = await sock.requestPairingCode(phone);
-        console.log(`\n🔑 Pairing Code: ${code}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
+        const formattedCode = code?.match(/.{1,4}/g)?.join("-") || code;
+        console.log(`\n🔑 Pairing Code: ${formattedCode}\nMasukkan kode ini di WhatsApp > Linked Devices > Link with phone number.\n`);
       } catch (err) {
         console.error("\n❌ Gagal request pairing code:", err.message);
       }
@@ -81,53 +47,30 @@ const sock = makeWASocket({
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect } = update;
-
-    if (connection === "open") {
-      console.log(`\n✅ ${config.botName} ${config.botVersion} connected successfully!`);
-      console.log(`📌 Prefix: ${config.prefix}`);
-      console.log(`📋 Type ${config.prefix}allmenu to see all commands\n`);
-    }
-
-    if (connection === "close") {
-      const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`⚠️  Connection closed (code: ${code}). Reconnecting: ${shouldReconnect}`);
+    if (update.connection === "open") console.log("✅ Bot connected successfully!");
+    if (update.connection === "close") {
+      const shouldReconnect = update.lastDisconnect?.error?.output?.statusCode !== 401;
       if (shouldReconnect) startBot();
-      else console.log("🔒 Logged out. Delete the session folder and restart to log in again.");
     }
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     if (type !== "notify") return;
-
     for (const msg of messages) {
-      if (!msg.message) continue;
-      if (msg.key.fromMe) continue;
-      if (isJidBroadcast(msg.key.remoteJid)) continue;
+      if (!msg.message || msg.key.fromMe) continue;
+      
+      // LID-Safe Owner Check
+      const senderJid = msg.key.participant || msg.key.remoteJid;
+      const senderNumber = senderJid.split("@")[0].replace(/[^0-9]/g, "");
+      const isOwner = config.ownerNumbers.includes(senderNumber);
 
       try {
-        await watchAntilink(sock, msg);
-        await handleCommand(sock, msg);
+        await handleCommand(sock, msg, isOwner);
       } catch (err) {
-        console.error("❌ Message handling error:", err.message);
+        console.error("❌ Error processing message:", err.message);
       }
     }
   });
-
-  sock.ev.on("group-participants.update", async (update) => {
-    try {
-      if (update.action === "add") await handleGroupJoin(sock, update);
-      if (update.action === "remove") await handleGroupLeave(sock, update);
-    } catch (err) {
-      console.error("❌ Group event error:", err.message);
-    }
-  });
-
-  return sock;
 }
 
-startBot().catch((err) => {
-  console.error("💥 Fatal error:", err);
-  process.exit(1);
-});
+startBot().catch(err => console.error(err));

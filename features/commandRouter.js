@@ -1,3 +1,4 @@
+const fs = require("fs");
 const config = require("../config/config");
 const db = require("../config/database");
 const { isGroup, isOwner, isGroupAdmin } = require("./permissions");
@@ -21,7 +22,7 @@ const ADMIN_ONLY = new Set([
   "setwelcome", "setleft", "welcome", "left", "teswelcome", "tesleft",
   "setopen", "setclose", "setproses", "setdone", "setppgc",
   "addlist", "dellist", "updatelist", "renamelist", "open", "close",
-  "proses", "done", "setlist", "resetlist", "setsymbol",
+  "proses", "done", "setlist", "resetlist", "setsymbol", "list"
 ]);
 
 function getMsgText(msg) {
@@ -42,6 +43,20 @@ async function handleCommand(sock, msg) {
     return sock.sendMessage(msg.key.remoteJid, { text: replyText }, { quoted: msg });
   }
 
+  // 👇 AUTO-RESPONDER FOR SAVED LIST KEYS 👇
+  const LIST_FILE = './list-messages.json';
+  if (fs.existsSync(LIST_FILE)) {
+    let list = JSON.parse(fs.readFileSync(LIST_FILE));
+    if (list[text]) {
+      let item = list[text];
+      if (item.isMedia) {
+        return sock.sendMessage(msg.key.remoteJid, { image: { url: item.url }, caption: item.text }, { quoted: msg });
+      } else {
+        return sock.sendMessage(msg.key.remoteJid, { text: item.text }, { quoted: msg });
+      }
+    }
+  }
+
   const prefix = config.prefix;
   if (!text.startsWith(prefix)) return;
 
@@ -54,21 +69,21 @@ async function handleCommand(sock, msg) {
   const senderIsOwner = isOwner(sender);
 
   if (OWNER_ONLY.has(cmd) && !senderIsOwner) {
-    return sock.sendMessage(jid, { text: "❌ Khusus owner bot." });
+    return sock.sendMessage(jid, { text: "❌ Khusus owner bot." }, { quoted: msg });
   }
 
   if (ADMIN_ONLY.has(cmd)) {
     if (!isGroup(jid)) {
-      return sock.sendMessage(jid, { text: "❌ Command ini hanya bisa digunakan di dalam grup." });
+      return sock.sendMessage(jid, { text: "❌ Command ini hanya bisa digunakan di dalam grup." }, { quoted: msg });
     }
     const senderIsGroupAdmin = await isGroupAdmin(sock, jid, sender);
     if (!senderIsOwner && !senderIsGroupAdmin) {
-      return sock.sendMessage(jid, { text: "❌ Command ini khusus admin grup." });
+      return sock.sendMessage(jid, { text: "❌ Command ini khusus admin grup." }, { quoted: msg });
     }
     if (!senderIsOwner && !isSewaActive(jid)) {
       return sock.sendMessage(jid, {
-        text: "⚠️ Sewa bot untuk grup ini belum aktif / sudah habis. Hubungi owner untuk memperpanjang.",
-      });
+        text: "⚠️ Sewa bot untuk grup ini belum aktif / sudah habis. Hubungi owner untuk memperpanjang."
+      }, { quoted: msg });
     }
   }
 
@@ -88,6 +103,7 @@ async function handleCommand(sock, msg) {
     case "creategrup": return owner.cmdCreateGroup(sock, msg, args);
     case "setppbot": return owner.cmdSetBotPicture(sock, msg);
     case "setbot": return owner.cmdSetBotResponse(sock, msg, args);
+    
     case "add": return admin.cmdAdd(sock, msg, args);
     case "addadmin": return admin.cmdAddAdmin(sock, msg, args);
     case "del": return admin.cmdDel(sock, msg);
@@ -112,6 +128,9 @@ async function handleCommand(sock, msg) {
     case "setclose": return admin.cmdSetClose(sock, msg, args);
     case "setproses": return admin.cmdSetProses(sock, msg, args);
     case "setdone": return admin.cmdSetDone(sock, msg, args);
+
+    // 👇 STORE & LIST COMMANDS 👇
+    case "list": return store.cmdList(sock, msg);
     case "addlist": return store.cmdAddList(sock, msg, args);
     case "dellist": return store.cmdDelList(sock, msg, args);
     case "updatelist": return store.cmdUpdateList(sock, msg, args);

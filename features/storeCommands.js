@@ -1,183 +1,223 @@
-// ╔══════════════════════════════════════════════════════════╗
-// ║        ANAXAGORAS — V1  ·  Store Menu Commands              ║
-// ╚══════════════════════════════════════════════════════════╝
+const fs = require('fs');
+const axios = require('axios');
+const FormData = require('form-data');
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 
-const config = require("../config/config");
-const db = require("../config/database");
+const LIST_FILE = './list-messages.json';
+const SETTINGS_FILE = './list-settings.json';
 
-// ── Helper: format a list for display ───────────────────────────
-function formatList(jid, name, list) {
-  const group = db.getGroup(jid);
-  const symbol = group.symbol || config.storeSymbol;
-  let text = `╭─── 〔 ${name} 〕•••\n`;
-  list.items.forEach((item, i) => {
-    text += `│${symbol}  ${i + 1}. ${item.name} — ${item.price}\n`;
-  });
-  text += `╰──────────── •••`;
-  return text;
+const loadData = (file) => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)) : {};
+const saveData = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+
+async function downloadMedia(msg) {
+    try {
+        let msgType = Object.keys(msg.message || {})[0];
+        let mediaMessage = msg.message[msgType];
+        let type = msgType.replace('Message', '');
+        
+        if (msgType === 'extendedTextMessage' && msg.message.extendedTextMessage.contextInfo?.quotedMessage) {
+            let quotedMsg = msg.message.extendedTextMessage.contextInfo.quotedMessage;
+            msgType = Object.keys(quotedMsg)[0];
+            mediaMessage = quotedMsg[msgType];
+            type = msgType.replace('Message', '');
+        }
+
+        if (type !== 'image') return null;
+
+        const stream = await downloadContentFromMessage(mediaMessage, type);
+        let buffer = Buffer.from([]);
+        for await(const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
+        return buffer;
+    } catch (e) {
+        return null;
+    }
 }
 
-// ── addlist <name> | <item,harga> | ... ──────────────────────────
 async function cmdAddList(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const parts = args.join(" ").split("|").map((p) => p.trim());
-  const name = parts[0];
-  if (!name || parts.length < 2) return sock.sendMessage(jid, { text: "❌ Format: .addlist <nama_list> | <item,harga> | ..." });
-
-  const items = parts.slice(1).map((p) => {
-    const [itemName, price] = p.split(",").map((x) => x.trim());
-    return { name: itemName || "-", price: price || "0" };
-  }).filter((i) => i.name !== "-");
-
-  const group = db.getGroup(jid);
-  if (group.lists[name]) return sock.sendMessage(jid, { text: `❌ List *${name}* sudah ada. Gunakan .updatelist untuk memperbarui.` });
-
-  group.lists[name] = { items };
-  db.setGroup(jid, { lists: group.lists });
-  await sock.sendMessage(jid, { text: `✅ List *${name}* berhasil dibuat!\n\n${formatList(jid, name, group.lists[name])}` });
+    const jid = msg.key.remoteJid;
+    let [key, ...res] = args.join(" ").split("@");
+    key = key?.trim();
+    let response = res.join("@").trim();
+    
+    let mediaBuffer = await downloadMedia(msg);
+    let imgUrl = "";
+    
+    if (mediaBuffer) {
+        const form = new FormData();
+        form.append('image', mediaBuffer, 'image.jpg');
+        try {
+            let res = await axios.post(`https://api.imgbb.com/1/upload?key=2131a9e7ba72e1452797a3f57daf22f9`, form, { headers: form.getHeaders() });
+            imgUrl = res.data.data.url;
+        } catch (err) {
+            return sock.sendMessage(jid, { text: "❌ Gagal upload gambar ke ImgBB." }, { quoted: msg });
+        }
+    }
+    
+    if (!key || (!response && !imgUrl)) return sock.sendMessage(jid, { text: "❌ Format: .addlist kunci@respon" }, { quoted: msg });
+    
+    let list = loadData(LIST_FILE);
+    list[key] = { text: response, url: imgUrl, isMedia: !!imgUrl };
+    saveData(LIST_FILE, list);
+    
+    return sock.sendMessage(jid, { text: `✅ Sukses menambahkan list: ${key}` }, { quoted: msg });
 }
 
-// ── dellist <name> ────────────────────────────────────────────────
 async function cmdDelList(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const name = args.join(" ").trim();
-  if (!name) return sock.sendMessage(jid, { text: "❌ Format: .dellist <nama_list>" });
-
-  const group = db.getGroup(jid);
-  if (!group.lists[name]) return sock.sendMessage(jid, { text: `❌ List *${name}* tidak ditemukan.` });
-
-  delete group.lists[name];
-  db.setGroup(jid, { lists: group.lists });
-  await sock.sendMessage(jid, { text: `🗑️ List *${name}* berhasil dihapus.` });
+    const jid = msg.key.remoteJid;
+    let key = args.join(" ").trim();
+    let list = loadData(LIST_FILE);
+    
+    if (!list[key]) return sock.sendMessage(jid, { text: "❌ Key tidak ditemukan!" }, { quoted: msg });
+    delete list[key];
+    saveData(LIST_FILE, list);
+    return sock.sendMessage(jid, { text: `✅ Sukses menghapus list: ${key}` }, { quoted: msg });
 }
 
-// ── updatelist <name> | <item,harga> | ... ──────────────────────────
 async function cmdUpdateList(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const parts = args.join(" ").split("|").map((p) => p.trim());
-  const name = parts[0];
-  if (!name || parts.length < 2) return sock.sendMessage(jid, { text: "❌ Format: .updatelist <nama_list> | <item,harga> | ..." });
+    const jid = msg.key.remoteJid;
+    let [key, ...res] = args.join(" ").split("@");
+    key = key?.trim();
+    let response = res.join("@").trim();
+    
+    let list = loadData(LIST_FILE);
+    if (!list[key]) return sock.sendMessage(jid, { text: "❌ Key tidak ditemukan!" }, { quoted: msg });
 
-  const group = db.getGroup(jid);
-  if (!group.lists[name]) return sock.sendMessage(jid, { text: `❌ List *${name}* tidak ditemukan.` });
-
-  const items = parts.slice(1).map((p) => {
-    const [itemName, price] = p.split(",").map((x) => x.trim());
-    return { name: itemName || "-", price: price || "0" };
-  }).filter((i) => i.name !== "-");
-
-  group.lists[name].items = items;
-  db.setGroup(jid, { lists: group.lists });
-  await sock.sendMessage(jid, { text: `✅ List *${name}* berhasil diperbarui!\n\n${formatList(jid, name, group.lists[name])}` });
+    let mediaBuffer = await downloadMedia(msg);
+    let imgUrl = list[key].url; 
+    
+    if (mediaBuffer) {
+        const form = new FormData();
+        form.append('image', mediaBuffer, 'image.jpg');
+        try {
+            let res = await axios.post(`https://api.imgbb.com/1/upload?key=YOUR_IMGBB_API_KEY`, form, { headers: form.getHeaders() });
+            imgUrl = res.data.data.url;
+        } catch (err) {}
+    }
+    
+    list[key] = { text: response || list[key].text, url: imgUrl, isMedia: !!imgUrl };
+    saveData(LIST_FILE, list);
+    return sock.sendMessage(jid, { text: `✅ Sukses update list: ${key}` }, { quoted: msg });
 }
 
-// ── renamelist <oldName> | <newName> ─────────────────────────────────
 async function cmdRenameList(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const parts = args.join(" ").split("|").map((p) => p.trim());
-  if (parts.length < 2) return sock.sendMessage(jid, { text: "❌ Format: .renamelist <nama_lama> | <nama_baru>" });
+    const jid = msg.key.remoteJid;
+    let [oldKey, newKey] = args.join(" ").split("@");
+    oldKey = oldKey?.trim();
+    newKey = newKey?.trim();
 
-  const [oldName, newName] = parts;
-  const group = db.getGroup(jid);
-  if (!group.lists[oldName]) return sock.sendMessage(jid, { text: `❌ List *${oldName}* tidak ditemukan.` });
-  if (group.lists[newName]) return sock.sendMessage(jid, { text: `❌ List *${newName}* sudah ada.` });
+    if (!oldKey || !newKey) return sock.sendMessage(jid, { text: "❌ Format: .renamelist namalama@namabaru" }, { quoted: msg });
 
-  group.lists[newName] = group.lists[oldName];
-  delete group.lists[oldName];
-  db.setGroup(jid, { lists: group.lists });
-  await sock.sendMessage(jid, { text: `✅ List *${oldName}* diubah menjadi *${newName}*.` });
+    let list = loadData(LIST_FILE);
+    if (!list[oldKey]) return sock.sendMessage(jid, { text: "❌ Key lama tidak ditemukan!" }, { quoted: msg });
+
+    list[newKey] = list[oldKey];
+    delete list[oldKey];
+    saveData(LIST_FILE, list);
+
+    return sock.sendMessage(jid, { text: `✅ Sukses merubah nama list ${oldKey} menjadi ${newKey}` }, { quoted: msg });
 }
 
-// ── setlist [name] ────────────────────────────────────────────────────
 async function cmdSetList(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const name = args.join(" ").trim();
-  const group = db.getGroup(jid);
-
-  if (!name) {
-    const keys = Object.keys(group.lists);
-    if (!keys.length) return sock.sendMessage(jid, { text: "❌ Belum ada list yang dibuat." });
-    const allLists = keys.map((k) => formatList(jid, k, group.lists[k])).join("\n\n");
-    return sock.sendMessage(jid, { text: allLists });
-  }
-
-  if (!group.lists[name]) return sock.sendMessage(jid, { text: `❌ List *${name}* tidak ditemukan.` });
-  await sock.sendMessage(jid, { text: formatList(jid, name, group.lists[name]) });
+    const jid = msg.key.remoteJid;
+    let input = args.join(" ");
+    
+    // Using # as the separator
+    const SEPARATOR = "#"; 
+    
+    if (!input.includes(SEPARATOR)) {
+        return sock.sendMessage(jid, { 
+            text: `❌ Format salah. Gunakan: .setlist Header ${SEPARATOR} Footer\n\nContoh: .setlist 🛒 MENU KAMI # ✨ Silahkan pilih!` 
+        }, { quoted: msg });
+    }
+    
+    // Split using the # separator
+    let parts = input.split(SEPARATOR);
+    let head = parts[0];
+    let foot = parts[1];
+    
+    let settings = loadData(SETTINGS_FILE);
+    
+    // Save without trimming to preserve your emojis and spacing
+    settings.header = head;
+    settings.footer = foot;
+    
+    saveData(SETTINGS_FILE, settings);
+    
+    return sock.sendMessage(jid, { 
+        text: `✅ List template updated successfully!` 
+    }, { quoted: msg });
 }
 
-// ── resetlist ──────────────────────────────────────────────────────────
-async function cmdResetList(sock, msg) {
-  const jid = msg.key.remoteJid;
-  db.setGroup(jid, { lists: {} });
-  await sock.sendMessage(jid, { text: "🗑️ Semua list berhasil direset." });
-}
-
-// ── setsymbol <symbol> ──────────────────────────────────────────────────
 async function cmdSetSymbol(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const symbol = args[0];
-  if (!symbol) return sock.sendMessage(jid, { text: "❌ Format: .setsymbol <simbol>" });
-
-  db.setGroup(jid, { symbol });
-  await sock.sendMessage(jid, { text: `✅ Simbol list diubah ke: ${symbol}` });
+    const jid = msg.key.remoteJid;
+    let settings = loadData(SETTINGS_FILE);
+    
+    // Join args and preserve original spaces instead of taking just args[0]
+    let newSymbol = args.join(" ");
+    if (!newSymbol) newSymbol = "•";
+    
+    settings.symbol = newSymbol;
+    saveData(SETTINGS_FILE, settings);
+    return sock.sendMessage(jid, { text: `✅ Symbol set to: '${settings.symbol}'` }, { quoted: msg });
 }
 
-// ── open / close ─────────────────────────────────────────────────────────
+async function cmdList(sock, msg) {
+    const jid = msg.key.remoteJid;
+    let list = loadData(LIST_FILE);
+    let settings = loadData(SETTINGS_FILE);
+    settings.symbol = settings.symbol || "•";
+    settings.header = settings.header || "This is the list :";
+    settings.footer = settings.footer || "There you go!";
+
+    let keys = Object.keys(list);
+    if (keys.length === 0) return sock.sendMessage(jid, { text: "List masih kosong." }, { quoted: msg });
+    let items = keys.map(k => `${settings.symbol} ${k}`).join('\n');
+    return sock.sendMessage(jid, { text: `${settings.header}\n${items}\n${settings.footer}` }, { quoted: msg });
+}
+
+async function cmdResetList(sock, msg) {
+    const jid = msg.key.remoteJid;
+    saveData(LIST_FILE, {});
+    return sock.sendMessage(jid, { text: "✅ Semua list telah dihapus (Reset)." }, { quoted: msg });
+}
+
 async function cmdOpen(sock, msg) {
-  const jid = msg.key.remoteJid;
-  const group = db.getGroup(jid);
-  db.setGroup(jid, { isOpen: true });
-  await sock.sendMessage(jid, { text: group.openMessage || config.defaults.openMessage });
+    const jid = msg.key.remoteJid;
+    await sock.groupSettingUpdate(jid, 'not_announcement');
+    return sock.sendMessage(jid, { text: "✅ Grup telah dibuka, semua anggota dapat mengirim pesan." }, { quoted: msg });
 }
 
 async function cmdClose(sock, msg) {
-  const jid = msg.key.remoteJid;
-  const group = db.getGroup(jid);
-  db.setGroup(jid, { isOpen: false });
-  await sock.sendMessage(jid, { text: group.closeMessage || config.defaults.closeMessage });
-}
-
-// ── proses / done <@user/nomor> ───────────────────────────────────────────
-function resolveTarget(msg, args) {
-  const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-  if (mentioned && mentioned.length > 0) return mentioned[0];
-  if (args[0]) {
-    const num = args[0].replace(/[^0-9]/g, "");
-    return num ? `${num}@s.whatsapp.net` : null;
-  }
-  return null;
+    const jid = msg.key.remoteJid;
+    await sock.groupSettingUpdate(jid, 'announcement');
+    return sock.sendMessage(jid, { text: "✅ Grup telah ditutup, hanya admin yang dapat mengirim pesan." }, { quoted: msg });
 }
 
 async function cmdProses(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const group = db.getGroup(jid);
-  const text = group.statusProses || config.defaults.statusProses;
-  const target = resolveTarget(msg, args);
-
-  if (target) await sock.sendMessage(jid, { text: `@${target.split("@")[0]} ${text}`, mentions: [target] });
-  else await sock.sendMessage(jid, { text });
+    const jid = msg.key.remoteJid;
+    let note = args.join(" ") || "Pesanan sedang diproses...";
+    return sock.sendMessage(jid, { text: `⏳ *PROSES*\n\nCatatan: ${note}` }, { quoted: msg });
 }
 
 async function cmdDone(sock, msg, args) {
-  const jid = msg.key.remoteJid;
-  const group = db.getGroup(jid);
-  const text = group.statusDone || config.defaults.statusDone;
-  const target = resolveTarget(msg, args);
-
-  if (target) await sock.sendMessage(jid, { text: `@${target.split("@")[0]} ${text}`, mentions: [target] });
-  else await sock.sendMessage(jid, { text });
+    const jid = msg.key.remoteJid;
+    let note = args.join(" ") || "Terima kasih!";
+    return sock.sendMessage(jid, { text: `✅ *DONE*\n\nPesanan telah selesai.\nCatatan: ${note}` }, { quoted: msg });
 }
 
 module.exports = {
-  cmdAddList,
-  cmdDelList,
-  cmdUpdateList,
-  cmdRenameList,
-  cmdSetList,
-  cmdResetList,
-  cmdSetSymbol,
-  cmdOpen,
-  cmdClose,
-  cmdProses,
-  cmdDone,
+    cmdAddList,
+    cmdDelList,
+    cmdUpdateList,
+    cmdRenameList,
+    cmdSetList,
+    cmdSetSymbol,
+    cmdList,
+    cmdResetList,
+    cmdOpen,
+    cmdClose,
+    cmdProses,
+    cmdDone
 };

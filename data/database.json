@@ -1,0 +1,44 @@
+{
+  "groups": {
+    "120363426867951042@g.us": {
+      "welcomeEnabled": false,
+      "leftEnabled": false,
+      "welcomeMessage": "hy kiw @user",
+      "leftMessage": null,
+      "antilink": true,
+      "antilinkKick": false,
+      "muted": false,
+      "isOpen": true,
+      "openMessage": null,
+      "closeMessage": null,
+      "statusProses": null,
+      "statusDone": null,
+      "symbol": null,
+      "lists": {
+        "test": {
+          "items": [
+            {
+              "name": "5000",
+              "price": "0"
+            },
+            {
+              "name": "hi",
+              "price": "0"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "sewa": {
+    "120363426867951042@g.us": {
+      "activatedAt": "2026-06-24T12:44:33.047Z",
+      "expiresAt": "2026-06-24T12:44:33.046Z"
+    }
+  },
+  "testimonials": [],
+  "status": {
+    "lastKey": null
+  },
+  "botResponse": "Ya, dalem? Ada yang bisa bot bantu?"
+}
