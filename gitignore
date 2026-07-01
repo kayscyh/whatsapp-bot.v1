@@ -1,5 +1,5 @@
 node_modules/
-sessions/
+session/
 tmp/
 *.log
 .DS_Store
